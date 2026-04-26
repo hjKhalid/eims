@@ -1,0 +1,414 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum RoleType {
+  SUPER_ADMIN
+  PRINCIPAL
+  MANAGER
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PAID
+  OVERDUE
+}
+
+enum SessionStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  logoUrl   String?
+  plan      String   @default("basic")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  schools   School[]
+}
+
+model School {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  address        String?
+  phone          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  branches       Branch[]
+  userRoles      UserRole[]
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  name      String
+  city      String?
+  headId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users             UserRole[]
+  classes           Class[]
+  subjects          Subject[]
+  feeStructures     FeeStructure[]
+  salaryStructures  SalaryStructure[]
+  expenses          Expense[]
+  announcements     Announcement[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  phone        String?  @unique
+  passwordHash String
+  avatar       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  roles          UserRole[]
+  refreshTokens  RefreshToken[]
+  sentMessages   Message[]      @relation("SentMessages")
+  receivedMessages Message[]    @relation("ReceivedMessages")
+  notifications  Notification[]
+  parentLinks    ParentLink[]   @relation("ParentUser")
+  studentLinks   ParentLink[]   @relation("StudentUser")
+}
+
+model Role {
+  id        String     @id @default(uuid())
+  name      RoleType   @unique
+  userRoles UserRole[]
+}
+
+model UserRole {
+  id        String  @id @default(uuid())
+  userId    String
+  roleId    String
+  schoolId  String?
+  branchId  String?
+
+  user   User    @relation(fields: [userId], references: [id])
+  role   Role    @relation(fields: [roleId], references: [id])
+  school School? @relation(fields: [schoolId], references: [id])
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@unique([userId, roleId, schoolId, branchId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Class {
+  id        String   @id @default(uuid())
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  name      String
+  gradeLevel String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subjects        Subject[]
+  enrollments     Enrollment[]
+  timetable       Timetable[]
+  studyMaterials  StudyMaterial[]
+  liveSessions    LiveSession[]
+  assignments     Assignment[]
+  attendance      Attendance[]
+  announcements   Announcement[]
+  messages        Message[]
+}
+
+model Subject {
+  id        String   @id @default(uuid())
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  name      String
+  code      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  classes        Class[]
+  teacherClasses TeacherClass[]
+}
+
+model TeacherClass {
+  id        String @id @default(uuid())
+  teacherId String
+  classId   String
+  subjectId String
+
+  subject Subject @relation(fields: [subjectId], references: [id])
+}
+
+model Enrollment {
+  id        String   @id @default(uuid())
+  classId   String
+  studentId String
+  enrolledAt DateTime @default(now())
+
+  class Class @relation(fields: [classId], references: [id])
+}
+
+model Timetable {
+  id        String   @id @default(uuid())
+  classId   String
+  day       String
+  period    Int
+  room      String?
+  startTime String?
+  createdAt DateTime @default(now())
+
+  class Class @relation(fields: [classId], references: [id])
+}
+
+model StudyMaterial {
+  id         String   @id @default(uuid())
+  classId    String
+  title      String
+  type       String
+  url        String
+  uploadedBy String
+  createdAt  DateTime @default(now())
+
+  class Class @relation(fields: [classId], references: [id])
+}
+
+model LiveSession {
+  id          String        @id @default(uuid())
+  classId     String
+  teacherId   String
+  title       String
+  scheduledAt DateTime
+  roomId      String?
+  recordingUrl String?
+  status      SessionStatus @default(SCHEDULED)
+  createdAt   DateTime      @default(now())
+
+  class        Class                @relation(fields: [classId], references: [id])
+  participants SessionParticipant[]
+  attendance   Attendance[]
+}
+
+model SessionParticipant {
+  id        String    @id @default(uuid())
+  sessionId String
+  userId    String
+  joinedAt  DateTime  @default(now())
+  leftAt    DateTime?
+
+  session LiveSession @relation(fields: [sessionId], references: [id])
+}
+
+model Assignment {
+  id          String   @id @default(uuid())
+  classId     String
+  teacherId   String
+  title       String
+  description String?
+  dueDate     DateTime
+  maxMarks    Int?
+  files       String[]
+  createdAt   DateTime @default(now())
+
+  class       Class        @relation(fields: [classId], references: [id])
+  submissions Submission[]
+}
+
+model Submission {
+  id           String   @id @default(uuid())
+  assignmentId String
+  studentId    String
+  text         String?
+  files        String[]
+  submittedAt  DateTime @default(now())
+  isLate       Boolean  @default(false)
+  marks        Int?
+  feedback     String?
+  gradedAt     DateTime?
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id])
+}
+
+model Attendance {
+  id        String           @id @default(uuid())
+  classId   String
+  studentId String
+  date      DateTime
+  status    AttendanceStatus
+  source    String           @default("manual") // auto, manual
+  sessionId String?
+
+  class   Class        @relation(fields: [classId], references: [id])
+  session LiveSession? @relation(fields: [sessionId], references: [id])
+}
+
+model LeaveRequest {
+  id         String      @id @default(uuid())
+  studentId  String
+  fromDate   DateTime
+  toDate     DateTime
+  reason     String?
+  status     LeaveStatus @default(PENDING)
+  approvedBy String?
+  createdAt  DateTime    @default(now())
+}
+
+model FeeStructure {
+  id        String   @id @default(uuid())
+  branchId  String
+  classId   String?
+  name      String
+  amount    Float
+  frequency String
+  dueDay    Int
+  createdAt DateTime @default(now())
+
+  branch   Branch       @relation(fields: [branchId], references: [id])
+  invoices FeeInvoice[]
+}
+
+model FeeInvoice {
+  id             String        @id @default(uuid())
+  studentId      String
+  feeStructureId String
+  amount         Float
+  dueDate        DateTime
+  status         InvoiceStatus @default(UNPAID)
+  createdAt      DateTime      @default(now())
+
+  feeStructure FeeStructure @relation(fields: [feeStructureId], references: [id])
+  payments     FeePayment[]
+}
+
+model FeePayment {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  amount      Float
+  method      String
+  gatewayRef  String?
+  receiptNo   String?  @unique
+  paidAt      DateTime @default(now())
+
+  invoice FeeInvoice @relation(fields: [invoiceId], references: [id])
+}
+
+model SalaryStructure {
+  id        String @id @default(uuid())
+  branchId  String
+  role      String
+  base      Float
+  allowances Float @default(0)
+  deductions Float @default(0)
+
+  branch Branch @relation(fields: [branchId], references: [id])
+}
+
+model SalaryDisbursement {
+  id        String   @id @default(uuid())
+  userId    String
+  month     String
+  gross     Float
+  net       Float
+  slipUrl   String?
+  paidAt    DateTime @default(now())
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  branchId    String
+  category    String
+  amount      Float
+  description String?
+  receiptUrl  String?
+  approvedBy  String?
+  date        DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  dataJson  String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Announcement {
+  id        String   @id @default(uuid())
+  branchId  String
+  classId   String?
+  title     String
+  body      String
+  postedBy  String
+  createdAt DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
+  class  Class? @relation(fields: [classId], references: [id])
+}
+
+model Message {
+  id         String    @id @default(uuid())
+  senderId   String
+  receiverId String
+  classId    String?
+  body       String
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  sender   User   @relation("SentMessages", fields: [senderId], references: [id])
+  receiver User   @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  class    Class? @relation(fields: [classId], references: [id])
+}
+
+model ParentLink {
+  id           String @id @default(uuid())
+  parentUserId String
+  studentId    String
+  relation     String
+
+  parent  User @relation("ParentUser", fields: [parentUserId], references: [id])
+  student User @relation("StudentUser", fields: [studentId], references: [id])
+}
